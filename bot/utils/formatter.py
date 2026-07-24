@@ -5,9 +5,10 @@ def format_collected_ticket(ticket: SupportTicket) -> str:
     lines = [
         f"Имя: {ticket.name or '-'}",
         f"Контакт: {ticket.contact or '-'}",
-        f"Проблема: {ticket.problem_summary or '-'}",
-        f"Когда возникло: {ticket.occurred_at or '-'}",
-        f"Где: {ticket.location or '-'}",
-        f"Приоритет: {ticket.priority or '-'}",
+        f"Жалоба на здоровье: {ticket.health_complaint or '-'}",
+        f"Где болит: {ticket.pain_location or '-'}",
+        f"Сила боли: {ticket.pain_intensity or '-'}",
+        f"Как давно беспокоит: {ticket.pain_duration or '-'}",
+        f"Желаемое время записи: {ticket.preferred_time or '-'}",
     ]
     return "\n".join(lines)

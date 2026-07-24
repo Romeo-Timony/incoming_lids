@@ -64,7 +64,7 @@ class OpenAISupportAssistant:
             content = data["choices"][0]["message"]["content"]
             return AssistantTurn.model_validate(json.loads(content))
         except Exception:
-            logger.exception("Falling back to local support turn generation")
+            logger.exception("Falling back to local massage booking turn generation")
             return self._build_fallback_turn(
                 current_ticket=current_ticket,
                 user_message=user_message,
@@ -162,38 +162,46 @@ class OpenAISupportAssistant:
         if requested_field == "name" and not extracted.name and self._looks_like_name(message):
             extracted.name = message
         elif requested_field == "contact" and not extracted.contact:
-            extracted.contact = self._extract_contact(message)
-        elif requested_field == "occurred_at" and self._looks_like_time_answer(message_lower):
-            extracted.occurred_at = message
-        elif requested_field == "priority":
-            extracted.priority = self._extract_priority(message_lower)
-        elif requested_field == "location":
-            extracted.location = self._extract_location(message, current_ticket)
-        elif requested_field == "problem":
-            extracted.problem_summary = self._extract_problem_summary(message, current_ticket)
-
-        if not extracted.problem_summary and not current_ticket.problem_summary and not self._looks_like_name(message):
-            extracted.problem_summary = self._extract_problem_summary(message, current_ticket)
+            extracted.contact = self._extract_contact(message) or message
+        elif requested_field == "pain_intensity":
+            extracted.pain_intensity = self._extract_pain_intensity(message_lower)
+        elif requested_field == "pain_duration" and self._looks_like_time_answer(message_lower):
+            extracted.pain_duration = message
+        elif requested_field == "pain_location":
+            extracted.pain_location = self._extract_pain_location(message) or message
+        elif requested_field == "preferred_time":
+            extracted.preferred_time = message
+        elif requested_field == "health_complaint":
+            extracted.health_complaint = self._extract_complaint(message, current_ticket)
 
         if (
-            not extracted.problem_summary
-            and current_ticket.problem_summary
-            and len(message.split()) <= 4
+            not extracted.health_complaint
+            and not current_ticket.health_complaint
             and not self._looks_like_name(message)
-            and not self._looks_like_time_answer(message_lower)
-            and not self._extract_priority(message_lower)
             and not self._extract_contact(message)
         ):
-            extracted.problem_summary = self._extract_problem_summary(message, current_ticket)
+            if self._looks_like_complaint(message_lower):
+                extracted.health_complaint = self._extract_complaint(message, current_ticket)
 
-        if not extracted.occurred_at and not current_ticket.occurred_at and self._looks_like_time_answer(message_lower):
-            extracted.occurred_at = message
+        if not extracted.pain_location and not current_ticket.pain_location:
+            extracted.pain_location = self._extract_pain_location(message)
 
-        if not extracted.location and not current_ticket.location:
-            extracted.location = self._extract_location(message, current_ticket)
+        if not extracted.pain_intensity and not current_ticket.pain_intensity:
+            extracted.pain_intensity = self._extract_pain_intensity(message_lower)
 
-        if not extracted.priority and not current_ticket.priority:
-            extracted.priority = self._extract_priority(message_lower)
+        if (
+            not extracted.pain_duration
+            and not current_ticket.pain_duration
+            and self._looks_like_time_answer(message_lower)
+        ):
+            extracted.pain_duration = message
+
+        if (
+            not extracted.preferred_time
+            and not current_ticket.preferred_time
+            and self._looks_like_booking_time(message_lower)
+        ):
+            extracted.preferred_time = message
 
         merged_ticket = current_ticket.model_copy(deep=True)
         merged_ticket.merge(extracted)
@@ -221,7 +229,7 @@ class OpenAISupportAssistant:
         telegram_first_name: str | None,
     ) -> str:
         if not conversation_history and is_new_session and not extracted.name and not merged_ticket.name:
-            return "Здравствуйте! Я помогу вам с обращением в техподдержку. Как вас зовут?"
+            return "Здравствуйте! Я помогу оформить запись на массаж. Как вас зовут?"
 
         if not merged_ticket.name:
             return "Подскажите, как к вам обращаться?"
@@ -229,23 +237,24 @@ class OpenAISupportAssistant:
         if not merged_ticket.contact:
             return "Оставьте, пожалуйста, контакт для связи: телефон или Telegram."
 
-        if not merged_ticket.problem_summary:
+        if not merged_ticket.health_complaint:
             name = merged_ticket.name or telegram_first_name
             prefix = f"{name}, " if name else ""
-            return f"{prefix}кратко опишите, пожалуйста, что случилось."
+            return f"{prefix}кратко опишите жалобу на здоровье: что вас беспокоит?"
 
-        if not merged_ticket.occurred_at:
-            return "Подскажите, пожалуйста, когда началась эта проблема?"
+        if not merged_ticket.pain_location:
+            return "Где именно болит или где ощущаете дискомфорт?"
 
-        if not merged_ticket.location:
-            if self._is_device_issue(merged_ticket.problem_summary):
-                return "Правильно понимаю, проблема возникает с самим устройством? Если да, напишите, с каким именно."
-            return "Где именно проявляется проблема: на сайте, в приложении, в функции или на устройстве?"
+        if not merged_ticket.pain_intensity:
+            return "Насколько сильная боль: слабая, средняя или сильная?"
 
-        if not merged_ticket.priority:
-            return "Насколько это срочно: срочно, средне или низкий приоритет?"
+        if not merged_ticket.pain_duration:
+            return "Как давно вас это беспокоит?"
 
-        return "Спасибо! Проверяю, всё ли собрано по заявке."
+        if not merged_ticket.preferred_time:
+            return "На какое удобное для вас время хотите записаться?"
+
+        return "Спасибо! Проверяю, всё ли собрано по анкете."
 
     @staticmethod
     def _normalize_text(value: str) -> str:
@@ -273,45 +282,76 @@ class OpenAISupportAssistant:
             return "name"
         if any(phrase in message for phrase in ["контакт", "телефон для связи", "telegram"]):
             return "contact"
-        if any(phrase in message for phrase in ["когда началась", "когда возникла", "когда это началось"]):
-            return "occurred_at"
-        if any(phrase in message for phrase in ["насколько это срочно", "какой приоритет", "срочно"]):
-            return "priority"
-        if any(phrase in message for phrase in ["где именно", "где проявляется", "в приложении", "на сайте", "на устройстве"]):
-            return "location"
         if any(
             phrase in message
             for phrase in [
-                "что случилось",
-                "в чем проблема",
-                "в чём проблема",
-                "в чем именно проблема",
-                "в чём именно проблема",
-                "опишите проблему",
-                "что именно",
+                "жалобу на здоровье",
+                "что вас беспокоит",
+                "что беспокоит",
+                "опишите жалобу",
             ]
         ):
-            return "problem"
+            return "health_complaint"
+        if any(
+            phrase in message
+            for phrase in [
+                "где именно болит",
+                "где болит",
+                "где ощущаете",
+                "локализац",
+            ]
+        ):
+            return "pain_location"
+        if any(
+            phrase in message
+            for phrase in [
+                "насколько сильная",
+                "сила боли",
+                "слабая, средняя",
+                "интенсивност",
+            ]
+        ):
+            return "pain_intensity"
+        if any(
+            phrase in message
+            for phrase in [
+                "как давно",
+                "сколько уже",
+                "когда началось",
+            ]
+        ):
+            return "pain_duration"
+        if any(
+            phrase in message
+            for phrase in [
+                "на какое",
+                "удобное для вас время",
+                "записаться",
+                "дата и время",
+            ]
+        ):
+            return "preferred_time"
         return None
 
     @staticmethod
     def _looks_like_name(message: str) -> bool:
         lowered = message.lower()
         blockers = [
-            "проблем",
-            "ошибк",
-            "не ",
-            "невключ",
-            "не включ",
-            "телефон",
-            "ноутбук",
-            "прилож",
-            "сайт",
-            "экран",
-            "кнопк",
+            "бол",
+            "жалоб",
+            "шея",
+            "спин",
+            "поясниц",
+            "плеч",
+            "мышц",
+            "массаж",
+            "запис",
             "срочно",
             "вчера",
             "сегодня",
+            "слабая",
+            "средняя",
+            "сильная",
         ]
         if any(blocker in lowered for blocker in blockers):
             return False
@@ -339,84 +379,108 @@ class OpenAISupportAssistant:
             "день",
             "недел",
             "месяц",
+            "год",
             "сегодня",
             "вчера",
             "только что",
             "утром",
             "вечером",
             "назад",
+            "давно",
+            "недавно",
         ]
         return any(token in message_lower for token in tokens)
 
     @staticmethod
-    def _extract_priority(message_lower: str) -> str | None:
-        if any(token in message_lower for token in ["срочно", "критично", "очень срочно", "горит", "важно срочно"]):
-            return "срочно"
-        if "низк" in message_lower:
-            return "низкий приоритет"
-        if any(token in message_lower for token in ["средне", "не срочно", "обычно", "терпит"]):
-            return "средне"
+    def _looks_like_booking_time(message_lower: str) -> bool:
+        tokens = [
+            "завтра",
+            "послезавтра",
+            "понедельник",
+            "вторник",
+            "сред",
+            "четверг",
+            "пятниц",
+            "суббот",
+            "воскресень",
+            "утра",
+            "утром",
+            "днем",
+            "днём",
+            "вечером",
+            "вечера",
+            "час",
+            ":",
+            "запис",
+        ]
+        return any(token in message_lower for token in tokens) or bool(re.search(r"\d", message_lower))
+
+    @staticmethod
+    def _looks_like_complaint(message_lower: str) -> bool:
+        tokens = [
+            "бол",
+            "жалоб",
+            "беспоко",
+            "напряж",
+            "скован",
+            "усталост",
+            "дискомфорт",
+            "тяну",
+            "ноет",
+            "зажим",
+            "отек",
+            "отёк",
+            "головн",
+        ]
+        return any(token in message_lower for token in tokens)
+
+    @staticmethod
+    def _extract_pain_intensity(message_lower: str) -> str | None:
+        if any(token in message_lower for token in ["сильн", "очень больно", "невыносим", "9", "10"]):
+            return "сильная"
+        if any(token in message_lower for token in ["слабая", "слаб", "чуть", "немного", "1", "2", "3"]):
+            return "слабая"
+        if any(token in message_lower for token in ["средн", "умерен", "4", "5", "6", "7"]):
+            return "средняя"
         return None
 
-    def _extract_location(self, message: str, current_ticket: SupportTicket) -> str | None:
+    @staticmethod
+    def _extract_pain_location(message: str) -> str | None:
         message_lower = message.lower()
-        if "телефон" in message_lower:
-            return "телефон"
-        if "ноутбук" in message_lower:
-            return "ноутбук"
-        if "компьютер" in message_lower or "пк" in message_lower:
-            return "компьютер"
-        if "принтер" in message_lower:
-            return "принтер"
-        if "сайт" in message_lower:
-            return "сайт"
-        if "прилож" in message_lower:
-            return "приложение"
-        if "личн" in message_lower and "кабинет" in message_lower:
-            return "личный кабинет"
-        if self._is_device_issue(message) or self._is_device_issue(current_ticket.problem_summary):
-            return "устройство"
+        body_parts = {
+            "шея": "шея",
+            "шейн": "шея",
+            "поясниц": "поясница",
+            "спин": "спина",
+            "плеч": "плечи",
+            "лопатк": "лопатки",
+            "голов": "голова",
+            "ног": "ноги",
+            "колен": "колени",
+            "рук": "руки",
+            "пояс": "поясница",
+            "крестц": "крестцовая область",
+            "грудн": "грудной отдел",
+            "поясничн": "поясница",
+        }
+        for token, label in body_parts.items():
+            if token in message_lower:
+                return label
         return None
 
-    def _extract_problem_summary(self, message: str, current_ticket: SupportTicket) -> str | None:
+    def _extract_complaint(self, message: str, current_ticket: SupportTicket) -> str | None:
         cleaned = self._normalize_text(message)
-        if not cleaned:
+        if not cleaned or self._looks_like_name(cleaned):
             return None
 
-        existing = current_ticket.problem_summary
-        message_lower = cleaned.lower()
-
+        existing = current_ticket.health_complaint
         if existing:
             existing_lower = existing.lower()
             if cleaned.lower() == existing_lower:
                 return None
-            if "не включ" in existing_lower and cleaned.lower() in {"телефон", "ноутбук", "компьютер"}:
-                return f"{cleaned.capitalize()} не включается"
             if cleaned.lower() in existing_lower:
                 return None
             if len(cleaned.split()) <= 4:
                 return f"{existing.rstrip('.')} {cleaned}".strip()
 
-        if self._looks_like_name(cleaned):
-            return None
-
         return cleaned
-
-    @staticmethod
-    def _is_device_issue(value: str | None) -> bool:
-        if not value:
-            return False
-        lowered = value.lower()
-        return any(
-            token in lowered
-            for token in [
-                "телефон",
-                "ноутбук",
-                "компьютер",
-                "принтер",
-                "устройство",
-                "не включ",
-                "кнопк",
-                "экран",
-            ]
-        )

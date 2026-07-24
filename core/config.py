@@ -1,14 +1,22 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     telegram_bot_token: str = Field(..., alias="TELEGRAM_BOT_TOKEN")
-    operator_chat_id: int = Field(..., alias="OPERATOR_CHAT_ID")
+    operator_bot_token: str = Field(..., alias="OPERATOR_BOT_TOKEN")
+    operator_chat_id: int | None = Field(default=None, alias="OPERATOR_CHAT_ID")
 
-    openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
+    @field_validator("operator_chat_id", mode="before")
+    @classmethod
+    def empty_chat_id_as_none(cls, value: object) -> object:
+        if value in ("", None):
+            return None
+        return value
+
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4.1-mini", alias="OPENAI_MODEL")
     openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
 

@@ -3,19 +3,27 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 
-Priority = Literal["срочно", "средне", "низкий приоритет"]
+PainIntensity = Literal["слабая", "средняя", "сильная"]
 MessageRole = Literal["user", "assistant"]
 
 
 class SupportTicket(BaseModel):
     name: str | None = None
     contact: str | None = None
-    problem_summary: str | None = None
-    occurred_at: str | None = None
-    location: str | None = None
-    priority: Priority | None = None
+    health_complaint: str | None = None
+    pain_location: str | None = None
+    pain_intensity: PainIntensity | None = None
+    pain_duration: str | None = None
+    preferred_time: str | None = None
 
-    @field_validator("name", "contact", "problem_summary", "occurred_at", "location")
+    @field_validator(
+        "name",
+        "contact",
+        "health_complaint",
+        "pain_location",
+        "pain_duration",
+        "preferred_time",
+    )
     @classmethod
     def clean_text(cls, value: str | None) -> str | None:
         if value is None:
@@ -33,10 +41,11 @@ class SupportTicket(BaseModel):
             [
                 self.name,
                 self.contact,
-                self.problem_summary,
-                self.occurred_at,
-                self.location,
-                self.priority,
+                self.health_complaint,
+                self.pain_location,
+                self.pain_intensity,
+                self.pain_duration,
+                self.preferred_time,
             ]
         )
 

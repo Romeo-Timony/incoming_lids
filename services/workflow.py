@@ -7,8 +7,12 @@ from services.telegram import OperatorNotifier
 logger = logging.getLogger(__name__)
 
 FINAL_CLIENT_MESSAGE = (
-    "Спасибо! Я передал вашу заявку специалисту. "
+    "Спасибо! Анкета для записи заполнена и передана администратору. "
     "Мы свяжемся с вами в ближайшее время."
+)
+OPERATOR_NOT_READY_MESSAGE = (
+    "Анкета почти готова, но администратор ещё не подключил бот заявок. "
+    "Попробуйте чуть позже."
 )
 
 
@@ -43,7 +47,13 @@ class SupportWorkflowService:
         session.started = True
 
         if session.ticket.is_complete() and turn.ready_to_submit:
-            await self._notifier.send_ticket(session)
+            try:
+                await self._notifier.send_ticket(session)
+            except RuntimeError:
+                logger.exception("Operator chat is not registered")
+                session.add_assistant_message(OPERATOR_NOT_READY_MESSAGE)
+                return OPERATOR_NOT_READY_MESSAGE
+
             session.submitted = True
             session.add_assistant_message(FINAL_CLIENT_MESSAGE)
             logger.info("Ticket submitted for user_id=%s", session.user_id)

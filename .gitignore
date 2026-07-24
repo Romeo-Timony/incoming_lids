@@ -1,4 +1,5 @@
 .env
+.operator_chat_id
 __pycache__/
 .pytest_cache/
 .mypy_cache/
