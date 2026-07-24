@@ -7,3 +7,6 @@ __pycache__/
 *.pyc
 venv/
 .venv/
+_deploy_probe.py
+massage-booking-bot.tar
+

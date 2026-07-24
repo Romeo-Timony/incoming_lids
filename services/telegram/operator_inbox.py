@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 from aiogram import Bot
@@ -7,7 +8,7 @@ from aiogram.types import Update
 
 logger = logging.getLogger(__name__)
 
-OPERATOR_CHAT_FILE = Path(".operator_chat_id")
+OPERATOR_CHAT_FILE = Path(os.environ.get("OPERATOR_CHAT_FILE", ".operator_chat_id"))
 
 
 class OperatorChatRegistry:

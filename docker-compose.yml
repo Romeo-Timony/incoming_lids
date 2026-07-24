@@ -1,0 +1,13 @@
+services:
+  bot:
+    image: massage-booking-bot:latest
+    build: .
+    container_name: massage-booking-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - bot-data:/app/data
+
+volumes:
+  bot-data:

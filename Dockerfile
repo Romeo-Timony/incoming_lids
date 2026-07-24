@@ -11,6 +11,10 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY . .
 
+RUN mkdir -p /app/data && chown -R appuser:appuser /app
+
 USER appuser
+
+ENV OPERATOR_CHAT_FILE=/app/data/.operator_chat_id
 
 CMD ["python", "main.py"]
